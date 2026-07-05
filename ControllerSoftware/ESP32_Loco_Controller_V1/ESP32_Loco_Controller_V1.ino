@@ -58,17 +58,34 @@ const bool INVERT_DEBUG_LED = true;
 // ---------- STATE ----------
 bool powerOn = false;     // starts OFF - loco disabled by default
 int  speedPercent = 0;    // 0-100, remembered even when power is off
-bool forward = true;      // reverser position - only changeable while speedPercent == 0
+bool forward = true;
+
+// ---------- Momentum ----------
+const unsigned long RAMP_UP_TIME_MS=5000;
+const unsigned long RAMP_DOWN_TIME_MS=3000;
+float currentSpeedPercent=0.0f;
+unsigned long lastRampUpdate=0;      // reverser position - only changeable while speedPercent == 0
 
 WebServer server(80);
 
 // ---------- APPLY OUTPUT ----------
+void updateMotorRamp() {
+  unsigned long now=millis();
+  if(lastRampUpdate==0){lastRampUpdate=now;return;}
+  float dt=(now-lastRampUpdate)/1000.0f; lastRampUpdate=now;
+  float target=powerOn?speedPercent:0.0f;
+  float up=RAMP_UP_TIME_MS?100.0f/(RAMP_UP_TIME_MS/1000.0f):1000.0f;
+  float down=RAMP_DOWN_TIME_MS?100.0f/(RAMP_DOWN_TIME_MS/1000.0f):1000.0f;
+  if(currentSpeedPercent<target){currentSpeedPercent+=up*dt; if(currentSpeedPercent>target)currentSpeedPercent=target;}
+  else if(currentSpeedPercent>target){currentSpeedPercent-=down*dt; if(currentSpeedPercent<target)currentSpeedPercent=target;}
+}
+
 void applyMotor() {
   int fwdDuty = 0;
   int revDuty = 0;
 
-  if (powerOn && speedPercent > 0) {
-    int duty = map(speedPercent, 0, 100, 0, (1 << MOTOR_RES) - 1);
+  if (currentSpeedPercent > 0.0f) {
+    int duty = map((int)round(currentSpeedPercent), 0, 100, 0, (1 << MOTOR_RES) - 1);
     if (forward) {
       fwdDuty = duty;
     } else {
@@ -83,7 +100,7 @@ void applyMotor() {
 
   // Debug LED shows speed magnitude, and only lights up at all if power
   // is actually on.
-  int magnitudePercent = powerOn ? speedPercent : 0;
+  int magnitudePercent = round(currentSpeedPercent);
   int ledDuty = map(magnitudePercent, 0, 100, 0, (1 << LED_RES) - 1);
   if (INVERT_DEBUG_LED) ledDuty = ((1 << LED_RES) - 1) - ledDuty;
   ledcWrite(DEBUG_LED_PIN, ledDuty);
@@ -99,20 +116,48 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <title>Loco Controller</title>
 <style>
   * { box-sizing: border-box; }
-  :root {
-    --sr-bg:          #0d2b1f;   /* dark malachite green - background */
-    --sr-green:       #1b5e3c;   /* Southern Region malachite green */
-    --sr-green-dark:  #0f3d28;   /* shadow/border green */
-    --sr-green-bright:#2e8b57;   /* brighter green for active glow */
-    --sr-cream:       #f2e8d0;   /* SR coach cream panels */
-    --sr-charcoal:    #2a221a;   /* dark text on cream */
-    --sr-gold:        #c9a227;   /* "sunshine" lettering gold */
+  /* Default theme = Southern Region (used until JS applies a saved choice) */
+  :root, [data-theme="sr"] {
+    --bg:            #0d2b1f;   /* dark malachite green - background */
+    --primary:       #1b5e3c;   /* Southern Region malachite green */
+    --primary-dark:  #0f3d28;   /* shadow/border green */
+    --primary-bright:#2e8b57;   /* brighter green for active glow */
+    --panel:         #f2e8d0;   /* SR coach cream panels */
+    --panel-text:    #2a221a;   /* dark text on cream */
+    --accent:        #c9a227;   /* "sunshine" lettering gold */
+    --status-text:   #8fae9c;
+    --sub-text:      #7a6b4d;
+    --tick-text:     #cfead9;
+  }
+  [data-theme="gwr"] {
+    --bg:            #241207;   /* dark chocolate brown - background */
+    --primary:       #4a2c1a;   /* GWR chocolate brown */
+    --primary-dark:  #2e1a0f;   /* shadow/border brown */
+    --primary-bright:#6b4226;   /* brighter toffee brown for active glow */
+    --panel:         #f5ecd7;   /* GWR coach cream panels */
+    --panel-text:    #2e1a0f;   /* dark text on cream */
+    --accent:        #d8a339;   /* GWR straw-gold lining */
+    --status-text:   #b5a082;
+    --sub-text:      #8a6a44;
+    --tick-text:     #e8d3ae;
+  }
+  [data-theme="lner"] {
+    --bg:            #0a1b33;   /* dark garter blue - background */
+    --primary:       #12294d;   /* LNER garter blue */
+    --primary-dark:  #081426;   /* shadow/border navy */
+    --primary-bright:#1f4e8c;   /* brighter blue for active glow */
+    --panel:         #eef1f5;   /* stainless-steel/teak-light panel */
+    --panel-text:    #1a1a1a;   /* dark text on light panel */
+    --accent:        #c8102e;   /* LNER lining scarlet */
+    --status-text:   #9fb3c8;
+    --sub-text:      #5c7692;
+    --tick-text:     #cfe0f0;
   }
   body {
     margin: 0;
     font-family: -apple-system, Helvetica, Arial, sans-serif;
-    background: var(--sr-bg);
-    color: var(--sr-cream);
+    background: var(--bg);
+    color: var(--panel);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -122,11 +167,28 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   h1 {
     font-size: 1.4em;
     margin-bottom: 4px;
-    color: var(--sr-gold);
+    color: var(--accent);
     letter-spacing: 1px;
   }
+  .theme-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .theme-swatch {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.25);
+    padding: 0;
+    cursor: pointer;
+  }
+  .theme-swatch.active {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.4);
+  }
   .status {
-    color: #8fae9c;
+    color: var(--status-text);
     margin-bottom: 32px;
     font-size: 0.9em;
   }
@@ -138,21 +200,21 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     font-size: 1.1em;
     font-weight: bold;
     letter-spacing: 1px;
-    color: var(--sr-cream);
-    background: var(--sr-green);
-    box-shadow: 0 0 0 4px var(--sr-green-dark) inset;
+    color: var(--panel);
+    background: var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-dark) inset;
     transition: background 0.2s, box-shadow 0.2s;
   }
   .power-btn.on {
-    background: var(--sr-green-bright);
-    color: var(--sr-charcoal);
-    box-shadow: 0 0 24px 4px rgba(201,162,39,0.5), 0 0 0 4px var(--sr-gold) inset;
+    background: var(--primary-bright);
+    color: var(--panel-text);
+    box-shadow: 0 0 24px 4px rgba(201,162,39,0.5), 0 0 0 4px var(--accent) inset;
   }
   .power-btn:active {
     transform: scale(0.97);
   }
   .power-btn:disabled {
-    background: var(--sr-green-dark);
+    background: var(--primary-dark);
     color: #5c6b62;
     box-shadow: none;
     opacity: 0.6;
@@ -161,11 +223,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     width: 100%;
     max-width: 380px;
     margin-top: 40px;
-    background: var(--sr-cream);
-    color: var(--sr-charcoal);
+    background: var(--panel);
+    color: var(--panel-text);
     border-radius: 16px;
     padding: 20px;
-    border: 2px solid var(--sr-green-dark);
+    border: 2px solid var(--primary-dark);
   }
   .card label {
     display: flex;
@@ -173,7 +235,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     font-size: 1em;
     margin-bottom: 12px;
   }
-  #speedVal { color: var(--sr-green); font-weight: bold; }
+  #speedVal { color: var(--primary); font-weight: bold; }
 
   .reverser-row {
     display: flex;
@@ -186,14 +248,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   }
   .reverser-sublabel {
     font-size: 0.7em;
-    color: #7a6b4d;
+    color: var(--sub-text);
   }
   .reverser-switch {
     position: relative;
     width: 56px;
     height: 96px;
-    background: var(--sr-green-dark);
-    border: 2px solid var(--sr-green);
+    background: var(--primary-dark);
+    border: 2px solid var(--primary);
     border-radius: 28px;
     padding: 4px;
   }
@@ -206,14 +268,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: var(--sr-gold);
+    background: var(--accent);
     transition: top 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 0.65em;
     font-weight: bold;
-    color: var(--sr-charcoal);
+    color: var(--panel-text);
   }
   /* knob sits at the top for FORWARD, bottom for REVERSE */
   .reverser-knob.fwd { top: 4px; }
@@ -224,7 +286,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     right: 0;
     text-align: center;
     font-size: 0.6em;
-    color: #cfead9;
+    color: var(--tick-text);
   }
   .reverser-tick.top { top: -18px; }
   .reverser-tick.bottom { bottom: -18px; }
@@ -237,7 +299,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   input[type=range]::-webkit-slider-runnable-track {
     height: 10px;
     border-radius: 5px;
-    background: var(--sr-green-dark);
+    background: var(--primary-dark);
   }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -245,13 +307,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     height: 32px;
     margin-top: -11px;
     border-radius: 50%;
-    background: var(--sr-gold);
-    border: 3px solid var(--sr-green);
+    background: var(--accent);
+    border: 3px solid var(--primary);
   }
 </style>
 </head>
 <body>
   <h1>Loco Controller</h1>
+  <div class="theme-row" id="themeRow">
+    <button class="theme-swatch" data-theme="sr"   style="background:#1b5e3c" onclick="setTheme('sr')"   title="Southern Region"></button>
+    <button class="theme-swatch" data-theme="gwr"  style="background:#4a2c1a" onclick="setTheme('gwr')"  title="Great Western Railway"></button>
+    <button class="theme-swatch" data-theme="lner" style="background:#12294d" onclick="setTheme('lner')" title="LNER"></button>
+  </div>
   <div class="status" id="statusText">connecting...</div>
 
   <button class="power-btn" id="powerBtn" onclick="togglePower()" disabled>POWER</button>
@@ -278,6 +345,19 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 let power = false;
 let speed = 0;
 let forward = true;
+
+function setTheme(theme) {
+  document.body.setAttribute('data-theme', theme);
+  document.querySelectorAll('.theme-swatch').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.theme === theme);
+  });
+  try { localStorage.setItem('locoTheme', theme); } catch (e) {}
+}
+
+// Restore last-picked theme (falls back to Southern Region)
+let savedTheme = 'sr';
+try { savedTheme = localStorage.getItem('locoTheme') || 'sr'; } catch (e) {}
+setTheme(savedTheme);
 
 function refreshUI(data) {
   power = data.power;
@@ -437,4 +517,6 @@ void setup() {
 
 void loop() {
   server.handleClient();
+  updateMotorRamp();
+  applyMotor();
 }
