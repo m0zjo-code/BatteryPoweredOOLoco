@@ -66,6 +66,8 @@ Print settings aren't finalized yet — treat wall thicknesses and clearances in
 5. Browse to the IP address printed over serial at boot (also visible as the ESP32's AP gateway address, typically `192.168.4.1`).
 6. Tap POWER to enable the motor outputs, then use the slider to control speed and direction.
 
+https://github.com/user-attachments/assets/85c435a2-d6ea-4894-8fac-613ea3ac95a9
+
 ## Status / known limitations
 
 - Actively in testing on a Hornby Battle of Britain class loco — fit, clearances, and wiring routing are still being refined.
