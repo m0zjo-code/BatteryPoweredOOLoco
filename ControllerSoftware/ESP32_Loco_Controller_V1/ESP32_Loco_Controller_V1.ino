@@ -22,8 +22,11 @@
   Hosts its own WiFi access point and a mobile-friendly single page with:
     - POWER button (starts DISABLED until the page has confirmed the
       real device state, and gates ALL output to zero when off)
-    - SPEED slider from -100% (full reverse) to +100% (full forward),
-      centred on 0% (stop), which is where it starts by default
+    - SPEED slider from 0-100%, like a real locomotive throttle
+    - REVERSER toggle switch (UP = forward, DOWN = reverse), like the
+      physical reverser lever on a real locomotive. To mirror the real
+      thing - and avoid a harsh mechanical snap-reversal - the reverser
+      can only be moved while speed is at 0%.
 
   NOTE ON WIRING / PIN CHOICE:
   GPIO 8 (used here for the debug LED) is unavailable as GPIO on classic
@@ -38,7 +41,7 @@
 const char* AP_SSID     = "ESP32-Controller";
 const char* AP_PASSWORD = "controller123";   // must be 8+ chars, or "" for open network
 
-const int MOTOR_PLUS_PIN  = 5;   // driver IN1 - PWM for forward
+const int MOTOR_PLUS_PIN  = 7;   // driver IN1 - PWM for forward
 const int MOTOR_MINUS_PIN = 6;   // driver IN2 - PWM for reverse
 const int DEBUG_LED_PIN   = 8;   // shows abs(speed) as brightness
 
@@ -54,8 +57,8 @@ const bool INVERT_DEBUG_LED = true;
 
 // ---------- STATE ----------
 bool powerOn = false;     // starts OFF - loco disabled by default
-int  speedPercent = 0;    // -100 (full reverse) .. 0 (stop) .. +100 (full forward)
-                           // remembered even when power is off
+int  speedPercent = 0;    // 0-100, remembered even when power is off
+bool forward = true;      // reverser position - only changeable while speedPercent == 0
 
 WebServer server(80);
 
@@ -64,22 +67,23 @@ void applyMotor() {
   int fwdDuty = 0;
   int revDuty = 0;
 
-  if (powerOn) {
-    if (speedPercent > 0) {
-      fwdDuty = map(speedPercent, 0, 100, 0, (1 << MOTOR_RES) - 1);
-    } else if (speedPercent < 0) {
-      revDuty = map(-speedPercent, 0, 100, 0, (1 << MOTOR_RES) - 1);
+  if (powerOn && speedPercent > 0) {
+    int duty = map(speedPercent, 0, 100, 0, (1 << MOTOR_RES) - 1);
+    if (forward) {
+      fwdDuty = duty;
+    } else {
+      revDuty = duty;
     }
   }
-  // when powerOn is false, both stay 0 regardless of speedPercent -
-  // this is the "gate to zero" behaviour carried over from the LED demo.
+  // when powerOn is false (or speed is 0), both stay 0 - this is the
+  // "gate to zero" behaviour carried over from the LED demo.
 
   ledcWrite(MOTOR_PLUS_PIN, fwdDuty);
   ledcWrite(MOTOR_MINUS_PIN, revDuty);
 
-  // Debug LED shows magnitude only, regardless of direction, and only
-  // lights up at all if power is actually on.
-  int magnitudePercent = powerOn ? abs(speedPercent) : 0;
+  // Debug LED shows speed magnitude, and only lights up at all if power
+  // is actually on.
+  int magnitudePercent = powerOn ? speedPercent : 0;
   int ledDuty = map(magnitudePercent, 0, 100, 0, (1 << LED_RES) - 1);
   if (INVERT_DEBUG_LED) ledDuty = ((1 << LED_RES) - 1) - ledDuty;
   ledcWrite(DEBUG_LED_PIN, ledDuty);
@@ -156,13 +160,60 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     margin-bottom: 12px;
   }
   #speedVal { color: #1fae4b; font-weight: bold; }
-  .direction-labels {
+
+  .reverser-row {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    font-size: 0.75em;
-    color: #666;
-    margin-top: 6px;
+    margin-top: 24px;
   }
+  .reverser-label {
+    font-size: 1em;
+  }
+  .reverser-sublabel {
+    font-size: 0.7em;
+    color: #666;
+  }
+  .reverser-switch {
+    position: relative;
+    width: 56px;
+    height: 96px;
+    background: #1c222b;
+    border: 2px solid #333;
+    border-radius: 28px;
+    padding: 4px;
+  }
+  .reverser-switch.disabled {
+    opacity: 0.4;
+  }
+  .reverser-knob {
+    position: absolute;
+    left: 4px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #1fae4b;
+    transition: top 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65em;
+    font-weight: bold;
+    color: #fff;
+  }
+  /* knob sits at the top for FORWARD, bottom for REVERSE */
+  .reverser-knob.fwd { top: 4px; }
+  .reverser-knob.rev { top: 44px; }
+  .reverser-tick {
+    position: absolute;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 0.6em;
+    color: #555;
+  }
+  .reverser-tick.top { top: -18px; }
+  .reverser-tick.bottom { bottom: -18px; }
   input[type=range] {
     width: 100%;
     height: 40px;
@@ -193,28 +244,48 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <div class="card">
     <label>Speed <span id="speedVal">0%</span></label>
-    <input type="range" min="-100" max="100" value="0" id="speedSlider"
+    <input type="range" min="0" max="100" value="0" id="speedSlider"
            oninput="onSliderInput(this.value)" onchange="setSpeed(this.value)">
-    <div class="direction-labels"><span>REVERSE</span><span>STOP</span><span>FORWARD</span></div>
+
+    <div class="reverser-row">
+      <div>
+        <div class="reverser-label">Reverser</div>
+        <div class="reverser-sublabel" id="reverserState">FORWARD</div>
+      </div>
+      <div class="reverser-switch" id="reverserSwitch" onclick="toggleReverser()">
+        <div class="reverser-tick top">FWD</div>
+        <div class="reverser-knob fwd" id="reverserKnob"></div>
+        <div class="reverser-tick bottom">REV</div>
+      </div>
+    </div>
   </div>
 
 <script>
 let power = false;
-
-function describeSpeed(val) {
-  val = parseInt(val);
-  if (val === 0) return '0%';
-  return (val > 0 ? '+' : '') + val + '% ' + (val > 0 ? 'FWD' : 'REV');
-}
+let speed = 0;
+let forward = true;
 
 function refreshUI(data) {
   power = data.power;
+  speed = data.speed;
+  forward = data.forward;
+
   const btn = document.getElementById('powerBtn');
   btn.className = 'power-btn' + (power ? ' on' : '');
   btn.disabled = false;   // now that we know the real device state, allow control
-  document.getElementById('speedSlider').value = data.speed;
-  document.getElementById('speedVal').innerText = describeSpeed(data.speed);
+
+  document.getElementById('speedSlider').value = speed;
+  document.getElementById('speedVal').innerText = speed + '%';
   document.getElementById('statusText').innerText = power ? 'ON' : 'OFF';
+
+  const knob = document.getElementById('reverserKnob');
+  knob.className = 'reverser-knob ' + (forward ? 'fwd' : 'rev');
+  document.getElementById('reverserState').innerText = forward ? 'FORWARD' : 'REVERSE';
+
+  // Reverser can only be moved while stopped, matching a real loco lever
+  const sw = document.getElementById('reverserSwitch');
+  if (speed > 0) sw.classList.add('disabled');
+  else sw.classList.remove('disabled');
 }
 
 function togglePower() {
@@ -224,11 +295,18 @@ function togglePower() {
 }
 
 function onSliderInput(val) {
-  document.getElementById('speedVal').innerText = describeSpeed(val);
+  document.getElementById('speedVal').innerText = val + '%';
 }
 
 function setSpeed(val) {
   fetch('/speed?value=' + val)
+    .then(r => r.json())
+    .then(refreshUI);
+}
+
+function toggleReverser() {
+  if (speed > 0) return;   // locked while moving
+  fetch('/direction?value=' + (forward ? 'reverse' : 'forward'))
     .then(r => r.json())
     .then(refreshUI);
 }
@@ -249,7 +327,8 @@ setInterval(poll, 4000);
 // ---------- HANDLERS ----------
 void sendState() {
   String json = "{\"power\":" + String(powerOn ? "true" : "false") +
-                ",\"speed\":" + String(speedPercent) + "}";
+                ",\"speed\":" + String(speedPercent) +
+                ",\"forward\":" + String(forward ? "true" : "false") + "}";
   server.send(200, "application/json", json);
 }
 
@@ -269,11 +348,25 @@ void handlePower() {
 void handleSpeed() {
   if (server.hasArg("value")) {
     int val = server.arg("value").toInt();
-    val = constrain(val, -100, 100);
+    val = constrain(val, 0, 100);
     speedPercent = val;
     // Moving the slider only ever changes the remembered speed - it never
     // turns power on by itself. Only the POWER button gates output.
     applyMotor();
+  }
+  sendState();
+}
+
+void handleDirection() {
+  if (server.hasArg("value")) {
+    String val = server.arg("value");
+    // Mirror a real loco reverser: it can only be moved while stopped,
+    // to avoid a harsh instantaneous reversal under power.
+    if (speedPercent == 0) {
+      if (val == "forward") forward = true;
+      else if (val == "reverse") forward = false;
+      applyMotor();
+    }
   }
   sendState();
 }
@@ -288,9 +381,6 @@ void handleNotFound() {
 
 // ---------- SETUP / LOOP ----------
 void setup() {
-  Serial.begin(115200);
-  delay(200);
-
   // Force all output pins to their safe/off state immediately, before PWM
   // is even attached, so there's no window where the motor could twitch
   // or the LED could glow during boot.
@@ -307,6 +397,10 @@ void setup() {
   ledcAttach(DEBUG_LED_PIN, LED_FREQ, LED_RES);
   applyMotor();   // powerOn starts false, so this writes 0 everywhere
 
+  // Setup Serial Port
+  Serial.begin(115200);
+  delay(200);
+
   // WiFi Access Point
   WiFi.softAP(AP_SSID, AP_PASSWORD);
   IPAddress ip = WiFi.softAPIP();
@@ -319,6 +413,7 @@ void setup() {
   server.on("/", handleRoot);
   server.on("/power", handlePower);
   server.on("/speed", handleSpeed);
+  server.on("/direction", handleDirection);
   server.on("/status", handleStatus);
   server.onNotFound(handleNotFound);
 
