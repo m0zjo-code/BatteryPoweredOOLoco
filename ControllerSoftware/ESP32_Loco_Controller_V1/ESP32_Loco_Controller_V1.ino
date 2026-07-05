@@ -61,7 +61,7 @@ int  speedPercent = 0;    // 0-100, remembered even when power is off
 bool forward = true;
 
 // ---------- Momentum ----------
-const unsigned long RAMP_UP_TIME_MS=5000;
+const unsigned long RAMP_UP_TIME_MS=1000;
 const unsigned long RAMP_DOWN_TIME_MS=3000;
 float currentSpeedPercent=0.0f;
 unsigned long lastRampUpdate=0;      // reverser position - only changeable while speedPercent == 0
@@ -70,14 +70,46 @@ WebServer server(80);
 
 // ---------- APPLY OUTPUT ----------
 void updateMotorRamp() {
+
+  // Get current time
   unsigned long now=millis();
-  if(lastRampUpdate==0){lastRampUpdate=now;return;}
-  float dt=(now-lastRampUpdate)/1000.0f; lastRampUpdate=now;
+
+  // Check to see if we have updated this millisecond
+  if(lastRampUpdate==0){
+    lastRampUpdate=now;
+    return;
+  }
+
+  // Compute delta time
+  float dt=(now-lastRampUpdate)/1000.0f;
+
+  // Update last update time
+  lastRampUpdate=now;
+
+  // Compute current target
   float target=powerOn?speedPercent:0.0f;
+
+  // Compute ramp rates (TODO: this should be done at compile time???)
   float up=RAMP_UP_TIME_MS?100.0f/(RAMP_UP_TIME_MS/1000.0f):1000.0f;
   float down=RAMP_DOWN_TIME_MS?100.0f/(RAMP_DOWN_TIME_MS/1000.0f):1000.0f;
-  if(currentSpeedPercent<target){currentSpeedPercent+=up*dt; if(currentSpeedPercent>target)currentSpeedPercent=target;}
-  else if(currentSpeedPercent>target){currentSpeedPercent-=down*dt; if(currentSpeedPercent<target)currentSpeedPercent=target;}
+
+  // Assign new speed
+  if(currentSpeedPercent<target){
+    currentSpeedPercent+=up*dt; 
+    if(currentSpeedPercent>target)
+    {
+      currentSpeedPercent=target;
+    }
+  }
+  else if(currentSpeedPercent>target){
+    currentSpeedPercent-=down*dt;
+    if(currentSpeedPercent<target)
+    {
+      currentSpeedPercent=target;
+    }
+  }
+
+  return;
 }
 
 void applyMotor() {
