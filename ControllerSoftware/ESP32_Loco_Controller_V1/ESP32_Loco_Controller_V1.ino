@@ -99,11 +99,20 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 <title>Loco Controller</title>
 <style>
   * { box-sizing: border-box; }
+  :root {
+    --sr-bg:          #0d2b1f;   /* dark malachite green - background */
+    --sr-green:       #1b5e3c;   /* Southern Region malachite green */
+    --sr-green-dark:  #0f3d28;   /* shadow/border green */
+    --sr-green-bright:#2e8b57;   /* brighter green for active glow */
+    --sr-cream:       #f2e8d0;   /* SR coach cream panels */
+    --sr-charcoal:    #2a221a;   /* dark text on cream */
+    --sr-gold:        #c9a227;   /* "sunshine" lettering gold */
+  }
   body {
     margin: 0;
     font-family: -apple-system, Helvetica, Arial, sans-serif;
-    background: #101418;
-    color: #eee;
+    background: var(--sr-bg);
+    color: var(--sr-cream);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -113,9 +122,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   h1 {
     font-size: 1.4em;
     margin-bottom: 4px;
+    color: var(--sr-gold);
+    letter-spacing: 1px;
   }
   .status {
-    color: #888;
+    color: #8fae9c;
     margin-bottom: 32px;
     font-size: 0.9em;
   }
@@ -127,21 +138,22 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     font-size: 1.1em;
     font-weight: bold;
     letter-spacing: 1px;
-    color: #fff;
-    background: #333;
-    box-shadow: 0 0 0 4px #222 inset;
+    color: var(--sr-cream);
+    background: var(--sr-green);
+    box-shadow: 0 0 0 4px var(--sr-green-dark) inset;
     transition: background 0.2s, box-shadow 0.2s;
   }
   .power-btn.on {
-    background: #1fae4b;
-    box-shadow: 0 0 24px 4px rgba(31,174,75,0.6);
+    background: var(--sr-green-bright);
+    color: var(--sr-charcoal);
+    box-shadow: 0 0 24px 4px rgba(201,162,39,0.5), 0 0 0 4px var(--sr-gold) inset;
   }
   .power-btn:active {
     transform: scale(0.97);
   }
   .power-btn:disabled {
-    background: #222;
-    color: #555;
+    background: var(--sr-green-dark);
+    color: #5c6b62;
     box-shadow: none;
     opacity: 0.6;
   }
@@ -149,9 +161,11 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     width: 100%;
     max-width: 380px;
     margin-top: 40px;
-    background: #181d24;
+    background: var(--sr-cream);
+    color: var(--sr-charcoal);
     border-radius: 16px;
     padding: 20px;
+    border: 2px solid var(--sr-green-dark);
   }
   .card label {
     display: flex;
@@ -159,7 +173,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     font-size: 1em;
     margin-bottom: 12px;
   }
-  #speedVal { color: #1fae4b; font-weight: bold; }
+  #speedVal { color: var(--sr-green); font-weight: bold; }
 
   .reverser-row {
     display: flex;
@@ -172,14 +186,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   }
   .reverser-sublabel {
     font-size: 0.7em;
-    color: #666;
+    color: #7a6b4d;
   }
   .reverser-switch {
     position: relative;
     width: 56px;
     height: 96px;
-    background: #1c222b;
-    border: 2px solid #333;
+    background: var(--sr-green-dark);
+    border: 2px solid var(--sr-green);
     border-radius: 28px;
     padding: 4px;
   }
@@ -192,14 +206,14 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     width: 44px;
     height: 44px;
     border-radius: 50%;
-    background: #1fae4b;
+    background: var(--sr-gold);
     transition: top 0.2s ease;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 0.65em;
     font-weight: bold;
-    color: #fff;
+    color: var(--sr-charcoal);
   }
   /* knob sits at the top for FORWARD, bottom for REVERSE */
   .reverser-knob.fwd { top: 4px; }
@@ -210,7 +224,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     right: 0;
     text-align: center;
     font-size: 0.6em;
-    color: #555;
+    color: #cfead9;
   }
   .reverser-tick.top { top: -18px; }
   .reverser-tick.bottom { bottom: -18px; }
@@ -223,7 +237,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   input[type=range]::-webkit-slider-runnable-track {
     height: 10px;
     border-radius: 5px;
-    background: #333;
+    background: var(--sr-green-dark);
   }
   input[type=range]::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -231,8 +245,8 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     height: 32px;
     margin-top: -11px;
     border-radius: 50%;
-    background: #1fae4b;
-    border: 3px solid #eee;
+    background: var(--sr-gold);
+    border: 3px solid var(--sr-green);
   }
 </style>
 </head>
