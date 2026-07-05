@@ -89,7 +89,7 @@ void updateMotorRamp() {
   // Compute current target
   float target=powerOn?speedPercent:0.0f;
 
-  // Compute ramp rates (TODO: this should be done at compile time???)
+  // Compute ramp rates
   float up=RAMP_UP_TIME_MS?100.0f/(RAMP_UP_TIME_MS/1000.0f):1000.0f;
   float down=RAMP_DOWN_TIME_MS?100.0f/(RAMP_DOWN_TIME_MS/1000.0f):1000.0f;
 
