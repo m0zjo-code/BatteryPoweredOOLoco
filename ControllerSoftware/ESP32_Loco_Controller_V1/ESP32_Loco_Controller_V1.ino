@@ -48,6 +48,15 @@ const int DEBUG_LED_PIN   = 8;   // shows abs(speed) as brightness
 const int MOTOR_FREQ = 20000;  // Hz - above audible range to avoid motor whine
 const int MOTOR_RES  = 10;     // bits - 0-1023 steps for finer low-speed control
 
+// Motors don't move at all below a certain duty cycle - there's not enough
+// voltage to overcome static friction/cogging, so everything below this
+// point is "wasted" slider travel (this is why you were seeing no movement
+// until ~70%). Set this to the lowest duty (as a %) that reliably gets the
+// loco moving from a standstill - test on your own loco/track and tune it.
+// The slider's 1-100% range is then remapped onto MOTOR_MIN_DUTY_PERCENT-100%
+// of actual PWM duty, so the whole slider travel does something useful.
+const int MOTOR_MIN_DUTY_PERCENT = 65;  // <-- tune this to your loco
+
 const int LED_FREQ = 5000;     // Hz - fine for an indicator LED
 const int LED_RES  = 8;        // bits - 0-255 steps
 
@@ -117,7 +126,12 @@ void applyMotor() {
   int revDuty = 0;
 
   if (currentSpeedPercent > 0.0f) {
-    int duty = map((int)round(currentSpeedPercent), 0, 100, 0, (1 << MOTOR_RES) - 1);
+    int maxDuty = (1 << MOTOR_RES) - 1;
+    int minDuty = map(MOTOR_MIN_DUTY_PERCENT, 0, 100, 0, maxDuty);
+    // Any non-zero speed (1-100%) is remapped onto minDuty..maxDuty, so the
+    // "dead" low end of the PWM range is skipped entirely. 0% still means
+    // fully off (handled by fwdDuty/revDuty defaulting to 0 above).
+    int duty = map((int)round(currentSpeedPercent), 1, 100, minDuty, maxDuty);
     if (forward) {
       fwdDuty = duty;
     } else {
