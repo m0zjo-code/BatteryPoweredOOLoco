@@ -75,6 +75,10 @@ const unsigned long RAMP_DOWN_TIME_MS=3000;
 float currentSpeedPercent=0.0f;
 unsigned long lastRampUpdate=0;      // reverser position - only changeable while targetSpeedPercent  == 0
 
+// Pre-compute ramp rates
+float up=RAMP_UP_TIME_MS?100.0f/(RAMP_UP_TIME_MS/1000.0f):1000.0f;
+float down=RAMP_DOWN_TIME_MS?100.0f/(RAMP_DOWN_TIME_MS/1000.0f):1000.0f;
+
 WebServer server(80);
 
 // ---------- APPLY OUTPUT ----------
@@ -97,10 +101,6 @@ void updateMotorRamp() {
 
   // Compute current target
   float target=powerOn?targetSpeedPercent:0.0f;
-
-  // Compute ramp rates
-  float up=RAMP_UP_TIME_MS?100.0f/(RAMP_UP_TIME_MS/1000.0f):1000.0f;
-  float down=RAMP_DOWN_TIME_MS?100.0f/(RAMP_DOWN_TIME_MS/1000.0f):1000.0f;
 
   // Assign new speed
   if(currentSpeedPercent<target){
