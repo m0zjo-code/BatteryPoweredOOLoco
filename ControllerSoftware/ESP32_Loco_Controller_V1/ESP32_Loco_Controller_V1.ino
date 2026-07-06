@@ -66,14 +66,14 @@ const bool INVERT_DEBUG_LED = true;
 
 // ---------- STATE ----------
 bool powerOn = false;     // starts OFF - loco disabled by default
-int  speedPercent = 0;    // 0-100, remembered even when power is off
+int  targetSpeedPercent  = 0;    // 0-100, remembered even when power is off
 bool forward = true;
 
 // ---------- Momentum ----------
-const unsigned long RAMP_UP_TIME_MS=1000;
+const unsigned long RAMP_UP_TIME_MS=3000;
 const unsigned long RAMP_DOWN_TIME_MS=3000;
 float currentSpeedPercent=0.0f;
-unsigned long lastRampUpdate=0;      // reverser position - only changeable while speedPercent == 0
+unsigned long lastRampUpdate=0;      // reverser position - only changeable while targetSpeedPercent  == 0
 
 WebServer server(80);
 
@@ -96,7 +96,7 @@ void updateMotorRamp() {
   lastRampUpdate=now;
 
   // Compute current target
-  float target=powerOn?speedPercent:0.0f;
+  float target=powerOn?targetSpeedPercent:0.0f;
 
   // Compute ramp rates
   float up=RAMP_UP_TIME_MS?100.0f/(RAMP_UP_TIME_MS/1000.0f):1000.0f;
@@ -467,7 +467,7 @@ setInterval(poll, 4000);
 // ---------- HANDLERS ----------
 void sendState() {
   String json = "{\"power\":" + String(powerOn ? "true" : "false") +
-                ",\"speed\":" + String(speedPercent) +
+                ",\"speed\":" + String(targetSpeedPercent) +
                 ",\"forward\":" + String(forward ? "true" : "false") + "}";
   server.send(200, "application/json", json);
 }
@@ -489,7 +489,7 @@ void handleSpeed() {
   if (server.hasArg("value")) {
     int val = server.arg("value").toInt();
     val = constrain(val, 0, 100);
-    speedPercent = val;
+    targetSpeedPercent = val;
     // Moving the slider only ever changes the remembered speed - it never
     // turns power on by itself. Only the POWER button gates output.
     applyMotor();
@@ -502,7 +502,7 @@ void handleDirection() {
     String val = server.arg("value");
     // Mirror a real loco reverser: it can only be moved while stopped,
     // to avoid a harsh instantaneous reversal under power.
-    if (speedPercent == 0) {
+    if (targetSpeedPercent == 0) {
       if (val == "forward") forward = true;
       else if (val == "reverse") forward = false;
       applyMotor();
