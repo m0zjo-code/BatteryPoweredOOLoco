@@ -36,17 +36,18 @@
 
 #include <WiFi.h>
 #include <WebServer.h>
+#include <ESPmDNS.h>
 
 // ---------- CONFIGURATION ----------
-const char* AP_SSID     = "ESP32-Controller";
-const char* AP_PASSWORD = "controller123";   // must be 8+ chars, or "" for open network
+const char* AP_PASSWORD = "";    // must be 8+ chars, or "" for open network
+const char* mdnsName = "loco";   // mDNS name (customize this as needed)
 
 const int MOTOR_PLUS_PIN  = 7;   // driver IN1 - PWM for forward
 const int MOTOR_MINUS_PIN = 6;   // driver IN2 - PWM for reverse
 const int DEBUG_LED_PIN   = 8;   // shows abs(speed) as brightness
 
-const int MOTOR_FREQ = 20000;  // Hz - above audible range to avoid motor whine
-const int MOTOR_RES  = 10;     // bits - 0-1023 steps for finer low-speed control
+const int MOTOR_FREQ = 20000;    // Hz - above audible range to avoid motor whine
+const int MOTOR_RES  = 10;       // bits - 0-1023 steps for finer low-speed control
 
 // Motors don't move at all below a certain duty cycle - there's not enough
 // voltage to overcome static friction/cogging, so everything below this
@@ -458,7 +459,7 @@ function poll() {
 }
 
 poll();
-setInterval(poll, 4000);
+setInterval(poll, 200);
 </script>
 </body>
 </html>
@@ -519,6 +520,15 @@ void handleNotFound() {
   server.send(404, "text/plain", "Not found");
 }
 
+// Generate H/W specific fingerprint
+String getFingerprint()
+{
+  uint64_t chipid = ESP.getEfuseMac();
+  char id[32];
+  snprintf(id, sizeof(id), "LOCO-%08X", (uint32_t)chipid);
+  return String(id);
+}
+
 // ---------- SETUP / LOOP ----------
 void setup() {
   // Force all output pins to their safe/off state immediately, before PWM
@@ -542,12 +552,22 @@ void setup() {
   delay(200);
 
   // WiFi Access Point
-  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  String AP_SSID = getFingerprint();
+  WiFi.softAP(AP_SSID.c_str(), AP_PASSWORD);
   IPAddress ip = WiFi.softAPIP();
   Serial.print("AP started. Connect to WiFi \"");
-  Serial.print(AP_SSID);
+  Serial.print(AP_SSID.c_str());
   Serial.println("\" then browse to:");
   Serial.println(ip);
+
+  if (MDNS.begin(mdnsName)) // <-- hostname, no ".local" suffix here
+  {
+    Serial.printf("mDNS responder started: http://%s.local\n", mdnsName);
+  }
+  else 
+  {
+    Serial.println("Error starting mDNS");
+  }
 
   // Web server routes
   server.on("/", handleRoot);
@@ -558,6 +578,7 @@ void setup() {
   server.onNotFound(handleNotFound);
 
   server.begin();
+  MDNS.addService("http", "tcp", 80);   // advertise the web server on the service
   Serial.println("Web server started.");
 }
 
